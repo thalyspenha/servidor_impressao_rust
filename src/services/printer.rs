@@ -1,82 +1,55 @@
 use std::{fs::File, io::Write, net::TcpStream, process::Command};
 use tempfile::NamedTempFile;
+use tracing::{info, error};
 
-pub async fn enviar_para_impressora(content: &[u8], tipo: &str, printer_target: &str, client_ip: &str) -> Result<String, String> {
+pub async fn enviar_para_impressora(content: &[u8], tipo: &str, printer_target: &str) -> Result<String, String> {
+    info!("Requisição de impressão recebida de {printer_target} - tipo: {tipo}");
+
     match tipo {
         "zpl" | "txt" | "pdf" => {
-            // Cria arquivo temporário com a extensão apropriada
             let file_path = NamedTempFile::new()
                 .unwrap()
                 .into_temp_path()
                 .with_extension(tipo);
             let mut temp = File::create(&file_path).unwrap();
             temp.write_all(&content).unwrap();
+            info!("Arquivo temporário criado em {:?}", file_path);
 
             if printer_target.contains(':') {
-                // Impressora por IP:porta (modo TCP/IP)
+                info!("Conectando via TCP/IP em {}", printer_target);
                 match TcpStream::connect(printer_target) {
                     Ok(mut stream) => {
                         if let Err(e) = stream.write_all(&content) {
-                            println!("Falha ao enviar para impressora: {}", client_ip);
+                            error!("Erro ao enviar dados para impressora via TCP de {}: {}", printer_target, e);
                             return Err("Falha ao enviar para impressora".to_string());
                         }
-                        println!("Enviado para impressora Zebra via {}", client_ip);
-                        return Ok("Enviado para impressora Zebra via".to_string());
+                        info!("Arquivo enviado com sucesso via TCP para {}", printer_target);
+                        return Ok("Enviado para impressora Zebra via TCP".to_string());
                     }
                     Err(e) => {
-                        println!("Erro ao conectar na impressora: {}", client_ip);
+                        error!("Erro ao conectar na impressora {}: {}", printer_target, e);
                         return Err("Erro ao conectar na impressora".to_string());
                     }
                 }
             } else {
-                // Impressora local por nome
+                info!("Imprimindo localmente via nome '{}'", printer_target);
                 match imprimir_local(printer_target, file_path.to_str().unwrap()) {
                     Ok(_) => {
-                        println!("Enviado para a impressora '{}'", client_ip);
+                        info!("Impressão enviada para '{}'", printer_target);
                         return Ok("Enviado para a impressora".to_string());
                     }
                     Err(e) => {
-                        println!("Erro ao imprimir: {}", client_ip);
-                        return Err("Erro ao imprimir:".to_string());
+                        error!("Erro ao imprimir localmente '{}': {}", printer_target, e);
+                        return Err(format!("Erro ao imprimir: {}", e));
                     }
                 }
             }
         }
-        _ => return Err("Tipo de arquivo não suportado".to_string()),
+        _ => {
+            error!("Tipo de arquivo não suportado: {}", tipo);
+            return Err("Tipo de arquivo não suportado".to_string());
+        }
     }
-    // match tipo {
-    //     "zpl" | "txt" => {
-    //         TcpStream::connect(zebra_addr)
-    //             .and_then(|mut s| s.write_all(conteudo))
-    //             .map_err(|e| format!("Erro TCP: {}", e))?;
-    //     }
-    //     "pdf" => {
-    //         let temp_path = NamedTempFile::new()
-    //             .map_err(|e| e.to_string())?
-    //             .into_temp_path()
-    //             .with_extension("pdf");
-    //         File::create(&temp_path)
-    //             .and_then(|mut f| f.write_all(conteudo))
-    //             .map_err(|e| format!("Erro ao gravar PDF: {}", e))?;
-
-    //         #[cfg(target_os = "windows")]
-    //         let output = Command::new("cmd")
-    //             .args(["/C", "start", "/min", "", temp_path.to_str().unwrap()])
-    //             .output();
-
-    //         #[cfg(not(target_os = "windows"))]
-    //         let output = Command::new("lp")
-    //             .arg(temp_path.to_str().unwrap())
-    //             .output();
-
-    //         if let Err(e) = output {
-    //             return Err(format!("Erro ao imprimir PDF: {}", e));
-    //         }
-    //     }
-    //     _ => return Err("Tipo de arquivo não suportado".to_string()),
-    // }
-
-    //Ok(())
 }
 
 fn imprimir_local(printer_name: &str, file_path: &str) -> Result<(), String> {

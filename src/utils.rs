@@ -1,7 +1,9 @@
 use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
 use crate::models::Claims;
+use tracing::info;
 
 pub fn validar_jwt(token: &str, secret: &str) -> Result<Claims, String> {
+    info!("Validando token JWT...");
     decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
